@@ -1,0 +1,769 @@
+---
+title: "Product Price Elasticity Analysis Report"
+author: "Chloe Li"
+date: "September 12, 2016"
+output:
+  pdf_document:
+    highlight: monochrome
+  html_document:
+    highlight: pygments
+    theme: united
+header-includes: \usepackage{graphicx} \usepackage{fancyhdr} \pagestyle{fancy} \setlength\headheight{28pt}
+  \fancyhead[L]{\includegraphics[width=0.5cm]{mobovidalogo.png}} \fancyfoot[LE,RO]{GPIM}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r prep,error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+                                ################################################################################
+                                #                 This script is for all PED analysis                          #
+                                #                     **All product PED**                                      #
+                                #                     Created by: CHLOE LI                                     #
+                                #                   Date Updated: Sep 07, 2016                                 #
+                                #     Note: Calculate the PED for EACH price change combination for each       #
+                                #     product. **Each unique price combination - no timing consideration       #
+                                #     Along with PED for each product's brand_model                            #
+                                ################################################################################
+
+                #----------------------------------------------------PREP------------------------------------------------------#
+
+                      #clear environment
+                      rm(list = ls())
+                      #set working directory to where the data stores
+                      setwd("/Users/chloeli/Documents/01. PriceElasticity_CL/001.Data")
+                      
+                      #install or/and reuqire neccessary packages
+                      #if (!require("pacman")) install.packages("pacman") #this line of code just need to run once 
+                      pacman::p_load("gridExtra","ggplot2", "dplyr","lubridate","reshape2","data.table","quantmod","lme4",
+                                     "lattice","plyr","broom",'ReporteRs',"knitr","xtable")
+                      
+
+                          #---------------------------------------------------------------------------------------#
+                          #this function works for dataset's created_at (date) format is 7/1/15 7:25 
+                          #this function will return "2016-01-10"
+                          #make sure every files in the list are having the same structure first before importing 
+                          #IF NOT:
+                          #run ONLY ONCE:
+                          ##source the function created to reformat the date in specific dataset
+                          #source("/Users/chloeli/Documents/03. R_Functions_CL/ReformaDate_Function_CL.R")
+                          #
+                          #use the function
+                          #ReformaDate("SFOI_160825_160911.csv")
+                          #---------------------------------------------------------------------------------------#
+
+                    
+                    
+                #----------------------------------------------------LOAD------------------------------------------------------#
+                    
+                    
+
+
+                  file_list <- list.files()
+                  
+                  
+                  dataset <- do.call("rbind",lapply(file_list,
+                                                    FUN=function(files){read.csv(files)[ ,c("product_id", "price", "qty_ordered", "created_at", "brand_model", "post_purchase_item")]}))
+
+
+
+              #--------------------------------------------------DATA TYPE----------------------------------------------------#
+                    #change some variables to correct type
+                    dataset$product_id <- as.character(dataset$product_id)
+                    #dealing with the time type 
+                    dataset$created_at <- as.character(dataset$created_at)
+                    dataset$created_at <- as.Date(gsub( " .*$", "", dataset$created_at))
+                    
+                    #round the price to 2 decimal places
+                    dataset$price <- round(dataset$price, 2)
+                    
+                    #select vairables that are needed for this analysis
+                    Master <- dplyr::filter(dataset, post_purchase_item != 1 & price != 0.00)  %>%
+                      #remove all post_purchase_item is 1, and price of 0.00
+                      select(product_id,qty_ordered,	
+                             price, date = created_at,brand_model) %>%
+                          arrange(product_id, date)
+                    
+                    
+
+
+
+```
+
+# Introduction
+
+## Objectives
+- We would like to examine the impact of price change on change in quantity demanded (aka. number of orders) using price elasticity of demand analytical approach (PED).
+
+## Definition of Terms
+- __PED__ evaluates how much percentage change of a product's quantity demanded would be given a percentage change in price.
+- __Regression analysis__ is a statistical process for estimating the relationships among variables, and it helps one understand how the typical value of the dependent variable changes when any one of the independent variables is varied.
+
+## Methodology
+  In our PED analysis, we took order data, and identified each price change for each product id. The average quantity demanded per day for specific price is calculated for better measurement. The PED is calculated between each changed price combination within a product_id. 
+  Then we create regression models for each product_id using percentage change in price as independent variable (factors that affect the percentage change in quantity demanded) while percentage change in quantity demanded as dependent variable.
+  Please note, more factors could be added to the model later for model tuning and accuracy's purpose.
+
+
+## Scope and Limitation
+- We are considering all of the order data dated from __`r min(Master$date)`__ to __`r max(Master$date)`__. It is still considered as small dataset especially when break down by product_id becuase there were many products have few price changes which cause the model to be less accurate and sometimes overfitting. 
+- PED gives us an idea of how our customers response to price changes but there are so many other factors that would affect the customers' responses which do not fit into PED calculation. Therefore, PED analysis' interpretation on current dataset is very limited.
+- There were not a very systematic way of tracking why and how the price of a particular product changed, which might cause some misleading information under total quantity demanded and total price listing days for each price by product_id. 
+- Althought this analysis has shortcomings, recommendations for further analysis will be provided at the end of the report for review. 
+ 
+  
+  
+# Data
+
+## Data Summary
+- Data files used: __`r file_list`__
+- Data's time range: __`r min(Master$date)`__ to __`r max(Master$date)`__
+- Number of unique products before cleaning: __`r length(unique(Master$product_id))`__
+- Number of unique brand_model before cleaning: __`r length(unique(Master$brand_model))`__
+- Excluding the post purchase item/orders
+- Excluding price of 0.00
+- Excluding total sales day of 1 of one price
+- Here is the distribution of price for entire dataset. The price distribution is highly skewed which is reasonable for our business since majority of our products' price ranges are around $10.
+
+```{r hist1, echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+
+ #---------------------------------------------HISTOGRAM OF PRICE------------------------------------------------#
+                  
+                    #graph histogram of price
+                    #y-count of price frequency
+                    #x-price range
+                    #more like a gamma distribution
+                    ggplot(Master, aes(x=price)) +
+                      geom_histogram(colour = "black", fill = "sky blue",bins = 30) +
+                      xlab("Price") +
+                      ylab("Count") +
+                      ggtitle("Distribution of Price") 
+                    
+```
+
+
+```{r P_change, error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+
+#------------------------------------------FREQUENCY OF PRICE CHANGE--------------------------------------------#
+                    
+                  
+                    
+                    #create a dataset to show each price change per products
+                    
+                    #group the data by each product and its each price to show each product with different price if changed had been made
+                    by_ProductID <- dplyr::group_by(Master, product_id, price) 
+                    
+                    SumData <- dplyr::summarise(by_ProductID, 
+                                                #calculate the total quantity sold to customers at each price for each product
+                                                #Start_PriceChange_Date = min(date),
+                                                Total_Orders = sum(qty_ordered)
+                    )          
+                    
+                    #this is for graph purpose
+                    CountTimes <- dplyr::select(as.data.frame(table(SumData$product_id)), product_id = Var1, frequency = Freq)
+                    
+                    
+                    #source the R function code for Diff_Identifier() which returns a new data frame
+                    source("/Users/chloeli/Documents/03. R_Functions_CL/CountFrequency_Fun.R")
+                    
+                    #calculate the frequency of price changes per product_id
+                    #filter the dataset based on frequency in price change
+                    #in this case, the cut off point is 2
+                    #subset product_id
+                    PriceChangedData <- CountFrequency(SumData, "product_id", 2, Master)
+                    
+          
+                    #arrange dataset so all same product_id with multiple dates
+                    PriceChangedData <- dplyr::arrange(PriceChangedData, product_id, date)
+```
+
+## Exploratory Analysis
+- The below histogram shows the distribution of frequency of price changes for all products. There are __`r length(unique(CountTimes$product_id[CountTimes$frequency == 1]))`__ products had only one price change, which is __`r length(unique(CountTimes$product_id[CountTimes$frequency == 1]))/length(unique(CountTimes$product_id))`__% of all __`r length(unique(CountTimes$product_id))`__. Note: All products which had only one price change are excluded from analysis. 
+
+```{r hist2, echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+                    
+                    #-------------------------------HISTOGRAM OF FREQUENCY OF PRICE CHANGE----------------------------------#
+  
+                    # ####
+                   
+                    #shows how many products that have # of prices changed
+                    ggplot(CountTimes, aes(x=frequency)) +
+                      geom_histogram(colour = "black", fill = "pink", bins = 30) +
+                      xlab("Frequency") +
+                      ylab("Count") +
+                      ggtitle("Histogram of Frequency in Price Change")
+                    
+                    # ####
+                    
+```
+
+```{r PED_ready, error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+#--------------------------------CALCULATE PED PER PRODUCT PRICE CHANGED--------------------------------#
+         
+                 
+                    #source the R function code for Diff_Identifier() which returns a new data frame
+                    source("/Users/chloeli/Documents/03. R_Functions_CL/Diff_Identifier_Fun.R")
+                    
+                    #this is to identify each price changed per product 
+                    Diff_Summary <- Diff_Identifier(PriceChangedData)
+```
+
+## Data Preparation
+- Below is the sample table to show each price change for product_id of "1000".
+- The dataset shows total quantity demanded (total order numbers), total number of days (duration) for each changed price's listing.
+- price_id is to distinguish the price changes' timeline (0-is the earliest)
+- There are many products' prices only listed for one day (Note: intial data cleaning, the hr:mm:ss were ignored for order date), which will be elimintaed for further analysis.
+
+```{r SampleTB, echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+#shows the "1000" product_id
+kable(Diff_Summary[Diff_Summary$product_id == "1000",])
+```
+
+
+```{r Filtering, echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+
+                    #combine data by product_id and price
+                    #Now we need to group those prices together for each product and sum it with total qty and total days of diff
+                    
+                    by_price <- dplyr::group_by(Diff_Summary, product_id, price)
+                    priceGrouped <- dplyr::summarise(by_price,
+                                                     price_id = min(price_id), 
+                                                     #min(price_id) allows me to identify which price occurred first
+                                                     Total_qty_demanded = sum(sum_qty),
+                                                     Total_sales_days = sum(date_diff))
+                    
+                    
+                      #order by product_id and then by price_id
+                      priceGrouped <- dplyr::arrange(priceGrouped, product_id, price_id)
+                      #filter the dataset: exclude data points whose Total_sales_days are 1
+                      priceGrouped <- dplyr::filter(priceGrouped, Total_sales_days > 1) 
+                      #might result in more 1 price changed entries..exclude those if possible
+                      
+                      
+                     
+                  #---------------------------------EXCLUDE 1 PRICE CHANGED ITEM-CHECK_2--------------------------------------#
+                    #use table() to calculate the frequency of price changes per product_id
+                    #this step is to examine the feasibility of the analysis
+                    CountTimes_2 <- dplyr::select(as.data.frame(table(priceGrouped$product_id)), product_id = Var1, frequency = Freq)
+                    
+                    #filter the dataset based on frequency in price change
+                    #in this case, the cut off point is 2
+                    CountTimes_2Filtered <- dplyr::filter(CountTimes_2, CountTimes_2$frequency > 2)
+                    
+                    
+                    
+                    # subset product_id if exsit in CountTimes_Filtered which has greater than 1 times of price change
+                    priceGrouped <- subset(priceGrouped[priceGrouped$product_id %in% CountTimes_2Filtered$product_id,])
+                    #arrange dataset so all same product_id with multiple dates
+                    priceGrouped <- dplyr::arrange(priceGrouped, product_id)
+                      
+        
+                      
+```                    
+
+
+## Initial Cleaning
+- Took out records having total sales days (price listing days) of 1
+- There are __`r length(unique(priceGrouped$product_id))`__ unique product_id left after data cleaning
+
+
+
+                    
+# Analyses
+
+## By Price Changes' Combinations
+
+- Calculate the average quantity demanded per day for each price_id, and then calculate the PED for each price change per product_id. 
+- Here is the sample table of PED per product's price change. 
+```{r, error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+                    #transform the dataset into data table for further calcualtion
+                    priceGrouped <- as.data.table(priceGrouped)
+                    
+                    #add new marker to price_id so I know which price occurred first
+                    priceGrouped[, price_id_New := cumsum(c(0,diff(price) != 0)), by = product_id] 
+                    #reorganize the dataset
+                    priceGrouped <- dplyr::select(priceGrouped, product_id, price_id_New, everything()) 
+                    #rearrange the dataset variable order
+                    priceGrouped <- dplyr::select(priceGrouped, -price_id)
+                    
+                    
+                    #change datediff to numeric for better transformation later on
+                    priceGrouped$Total_sales_days <- as.numeric(priceGrouped$Total_sales_days)
+
+```
+- Sample table for product_id of "1000" after cleaning the total price listing of 1 day, and grouping the same price
+```{r, echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+
+kable(priceGrouped[priceGrouped$product_id == "1000",])
+
+```
+
+### PED Calculation
+- Formula: __PED = % change in quantity demanded / % change in price__
+- The following approach is to calculate PED on each changing price' combination per product_id.
+- This approach can give us more observations from chaging prices, and more data points to feed the regression model.
+- However, because of lack of price changes per product_id, there are still not enough data to create a better and a more accurate regression.
+
+```{r, error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+
+ #--------------------------------------------READY FOR PED ALL---------------------------------------------------#
+                                                        ##########  ########## ###########
+                                                        #        #  #          #          #
+                                                        #        #  #          #          #
+                                                        ##########  #########  #          #
+                                                        #           #          #          #
+                                                        #           #          #          #
+                                                        #           ########## ###########
+                                                        
+                    
+                    
+                    
+                   #need to calculate PED for all price changes.
+                    #any price changes combination
+                    
+                    
+                    #set up an empty dataframe to store the new pairwise comparison in rows 
+                    DT_CombP_PED <- data.frame(
+                      product_id = character(),
+                      price_id_New = character(),
+                      price = double(),
+                      Total_qty_demanded = double(),
+                      Total_sales_days = double(),
+                      stringsAsFactors=FALSE) 
+                    
+                    #this loop is to loop through each unique product_id, for each id, we use pairwise comparison on each price_id
+                    #and rbind each of product_id's pairwise dataset
+                    for (id in unique(priceGrouped$product_id)){
+                      combined <- apply(priceGrouped[priceGrouped$product_id == id, ], 2, combn, m=2)
+                      DT_CombP_PED <- rbind(DT_CombP_PED, combined)
+                    }
+                    
+                    
+                    #after combn(), all variables turn to factor type. Need to reformat all data type
+                    DT_CombP_PED$product_id <- as.character(DT_CombP_PED$product_id)
+                    DT_CombP_PED$price_id_New <- as.character(DT_CombP_PED$price_id_New)
+                    
+                    #some numeric values might be loose information if transform directly from factor to numeric
+                    #here are some special treatment
+                    DT_CombP_PED$price <- as.numeric(as.character(DT_CombP_PED$price))
+                    DT_CombP_PED$Total_sales_days <- as.numeric(as.character(DT_CombP_PED$Total_sales_days))
+                    DT_CombP_PED$Total_qty_demanded <- as.numeric(as.character(DT_CombP_PED$Total_qty_demanded))
+                    
+                    
+                    
+                    #calculate the # of orders per price period
+                    DT_CombP_PED$AvgDemand_PerDay <- DT_CombP_PED$Total_qty_demanded/DT_CombP_PED$Total_sales_days
+                    
+                    #set back to data table for calcualting the lag differenes
+                    DT_CombP_PED <- as.data.table(DT_CombP_PED)
+                    
+                    #sort dataframe by product_id and mark it as KEY
+                    setkey(DT_CombP_PED,product_id)
+                    
+                    #calculate percentage change in price and in average qty demanded by product_id
+                    #this will return each of consecutive rows differences for each product
+                    DT_CombP_PED[,Percent_Change_price:=c(Delt(price, type='arithmetic')),by=product_id]
+                    DT_CombP_PED[,Percent_Change_Avgqty:=c(Delt(AvgDemand_PerDay, type='arithmetic')),by=product_id]
+                    
+                      
+                    #but we need only one difference between each of two rows
+                    #that is, we need to delete the odd rows
+                    
+                    #set up odd indexes
+                    odd_indexes <- seq(1,length(DT_CombP_PED$product_id), 2)
+                    #assign NA to odd rows' percentage change in price and percentage change in Avgqty
+                    DT_CombP_PED[odd_indexes, c("Percent_Change_price", "Percent_Change_Avgqty")] <- NA
+                    
+                    
+                    
+                    #calculate price elasticity of demand per price change for each product_id
+                    DT_CombP_PED$PED <- DT_CombP_PED$Percent_Change_Avgqty/DT_CombP_PED$Percent_Change_price
+                    
+                         
+                    #calcuate revenue
+                    DT_CombP_PED$Revenue <- DT_CombP_PED$price * DT_CombP_PED$Total_qty_demanded
+                    #rearrange the column names
+                    DT_CombP_PED <- dplyr::select(DT_CombP_PED, product_id, price_id_New, price, Total_qty_demanded, Revenue, everything())         
+
+```
+
+- The table summary below shows the PED calculation for each price change combination for product_id of "1000"
+```{r, echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+
+
+
+kable(subset(DT_CombP_PED, DT_CombP_PED$product_id == "1000", 
+select=c(product_id, price_id_New, price,Percent_Change_price,Percent_Change_Avgqty,PED)))
+
+
+
+
+```
+
+
+### Regression Model
+- Regression model is built for each product using its all price changing % and all changing % in quantity demanded.
+- A function is created to pull the regression model with its statistic summary, and its estimated percentage change in quantity demanded. 
+```{r, error=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+ #---------------------------------------REGRESSION MODEL BUILDING-------------------------------------#
+                    #need to build regression model per each product_id
+                    #using y-dependent variable of percentage change in price, x-independent variable of percentage change in qty demanded
+                    
+                    RegrModel_DT <- na.omit(DT_CombP_PED)
+                    
+                    
+                    fitted_models = RegrModel_DT %>% group_by(product_id) %>% do(model = lm(AvgDemand_PerDay ~ Percent_Change_price, data = .))
+                    
+                    Coef_Summary <- fitted_models %>% tidy(model) #coefficient and p value
+                    Coef_Summary <- as.data.frame(Coef_Summary) #using 0.1 as significant cut off
+                    #still need to round the num
+                    Coef_Summary[,3:6] <-round(Coef_Summary[,3:6],3) 
+                    
+                    
+                    
+                    Model_summary <- fitted_models %>% glance(model) #with r square
+                    Model_summary <- as.data.frame(Model_summary)
+                    Model_summary[,2:6] <-round(Model_summary[,2:6],3) 
+
+                    
+                    #source the function
+                    source("/Users/chloeli/Documents/03. R_Functions_CL/Est.Predicted_Qd_Fun.R")
+ 
+```
+- Function structure: __*Est.Qty_Demanded(productID, percentChangePrice)*__
+- For example: for product_id of "1000", we would like 5% increase in price [e.g. Est.Qty_Demanded("1000", 5)]
+- Output will be:
+
+```{r, echo=FALSE, error=FALSE, message=FALSE, warning=FALSE}
+Est.Qty_Demanded("1000", 5)
+```
+- The first line indicates the model equation where Y is the percentage change in quantity demanded and X is the percentage change in price.
+- The second line shows the model's accuracy by displaying the R square (for a single independent variable) of 62.6% which means that there are 62.6% of variance is explained by the model. Also, P-value of 0.061 indicates the significant level. We decided to set the significant level to be 0.1, that is, since p-value is less than 0.1, we consider this regression model to be significant.
+- The third line tells us the predicted value of percentage change in quantity demanded by feeding the 5% increase in price for product_id of "1000".
+
+
+
+## By Brand_Model
+```{r Brand_Analysis__ALL_Ready, message=FALSE, warning=FALSE, include=FALSE}
+
+#Count number of orders per brand/model
+CountBrand <- as.data.frame(table(PriceChangedData$brand_model))
+CountBrand <- dplyr::select(CountBrand, brand_model = Var1, Num_Orders = Freq)
+
+#filter the brand_model with larger frequency/number of orders and remove some NULL/NA
+#extract only top sellers brand/model (cutoff - 2000 orders and above per brand/model)
+filtered_brand <- filter(CountBrand, Num_Orders > 3000 & brand_model != "\\t" & brand_model != "" & brand_model != "NULL") %>%
+                        arrange(desc(Num_Orders))
+
+``` 
+
+- The below graph shows total number of orders per brand/model.
+- Note: all product_id counted had more than 2 times of price changes
+- This histogram only shows brand/model that had over 3000 orders. 
+
+```{r Brand_Analysis_Filtered_G1, echo=FALSE, message=FALSE, warning=FALSE}
+
+#go back to original dataset and subset the brand/model that we need
+brand_Ready <- subset(PriceChangedData[PriceChangedData$brand_model %in% filtered_brand$brand_model,])
+
+
+#----------------------------------DATA BY BRAND FOR SHOW IS READY-----------------------------------#
+
+
+#brand/model analysis is based on product_id whose price had changed more than 2 times
+#-----------------------------------------------------SHOW-------------------------------------------------------------------#
+#this is histogram to show number of total orders per brand/model (sorted)
+                        #####################################################################################
+                        #set up x & y axis label's theme
+                        #bold <- element_text(face = "bold", color = "black")
+                        #add more by adding face = "bold.italics" etc.
+                        #More: http://rstudio-pubs-static.s3.amazonaws.com/3364_d1a578f521174152b46b19d0c83cbe7e.html
+                                                          
+                        Brand <- ggplot(brand_Ready,aes(x=reorder(brand_model,brand_model,function(x)-length(x))))
+                        Brand + 
+                              geom_bar(fill = "orange") + 
+                              theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+                              ggtitle("Histogram of Brand/Model") +
+                              xlab("Brand") +
+                              ylab("Number of Orders") #+
+                              #theme(axis.text = bold)
+              
+              
+                        #####################################################################################
+```
+
+- Below shows a summary table of top 20 selling brands/models.
+```{r Brand_Analysis_Filtered_T1, echo=FALSE, message=FALSE, warning=FALSE}
+
+                                  #show table for top 20 brands/models with number of total orders per brands/models
+                                  kable(filtered_brand[1:20,])
+
+```
+
+- The below graph shows the number of unique product_id associated with each brand/model
+
+```{r Brand_Analysis_Filtered_G2, echo=FALSE, message=FALSE, warning=FALSE}
+
+#----------------------------------DATA BY BRAND FOR SHOW IS READY-----------------------------------#
+
+by_BrandID <- dplyr::group_by(brand_Ready, brand_model) 
+Brand_ID <- dplyr::summarise(by_BrandID, Num_Unique_ID = length(unique(product_id))) %>%
+                      arrange(desc(Num_Unique_ID)) %>%
+                      filter(Num_Unique_ID > 5)
+Brand_ID$Num_Unique_ID <- as.numeric(Brand_ID$Num_Unique_ID)
+
+                        #####################################################################################              
+                                  #show histogram of number of unique product_id per brand/model
+                                  #this is  histogram of number of unique_ID associated with each brand/model 
+                                  #(exclude the ID with only 1 price changed)                   
+                                  
+                        ggplot(Brand_ID,aes(x=reorder(brand_model,-Num_Unique_ID),y=Num_Unique_ID)) + 
+                            geom_bar(fill = "#56B4E9", stat='identity') + 
+                            labs(y='Number of Unique Product_ID',x='Brand/Model') + #coord_flip() 
+                            theme(axis.text.x = element_text(angle = 90, hjust = 1))
+              
+                        ##################################################################################### 
+```
+
+- The table below shows a summary of brand/model with top 20 highest number of product_id associated with certain brand/model
+```{r Brand_Analysis_Filtered_T2, echo=FALSE, message=FALSE, warning=FALSE}
+
+                                #Show table for top 20 brands/models with number of unique product_id associated with 
+                                kable(Brand_ID[1:20,])
+                                  
+#-----------------------------------------------------SHOW END---------------------------------------------------------------#
+                    
+```
+
+
+```{r Brand_Analysis_ALL, message=FALSE, warning=FALSE, include=FALSE}
+
+#----------------------------DATA BY BRAND FOR SHOW IS READY---------------------------------#
+
+#cleaning the brand_model --> remove some NULL/NA
+brand_All_Ready <- dplyr::filter(PriceChangedData, brand_model != "\\t" & brand_model != "" & brand_model != "NULL")
+
+#----------------------------DATA BY BRAND FOR SHOW IS READY---------------------------------#
+
+```
+
+
+### PED Calculation
+
+```{r Cal_PED, message=FALSE, warning=FALSE, include=FALSE}
+
+#this section is to calculate the PED per product'price change
+
+
+                  ##########  ########## ###########
+                  #        #  #          #          #
+                  #        #  #          #          #
+                  ##########  #########  #          #
+                  #           #          #          #
+                  #           #          #          #
+                  #           ########## ###########
+
+
+# ####
+            #-----------------------DataSet Grouping by Product & Brand, mark price_id-----------------------------------#
+            
+            
+                              #source the R function code for Diff_Identifier() which returns a new data frame
+                              source("/Users/chloeli/Documents/03. R_Functions_CL/Diff_Identifier_byBrand_Fun.R")
+                              
+                              Diff_Summary_byBrand <- Diff_Identifier_Brand(brand_All_Ready)
+            
+            
+          #-----------------------------DataSet Grouping by Product & Brand, mark price_id-------------------------------#
+```
+
+- Below is the table summary of product_id "10194". This is a sample data where PED analysis is conducted on. 
+- The fact that one product_id might associate with multiple brand/models created a bit of complication on PED calcuation.
+- However, after discussing with the team, we decided to combine same brand/models within one product_id, and calculate PED on each of brand/model if price changed. 
+```{r table_PEDready, echo=FALSE, message=FALSE, warning=FALSE}
+
+kable(Diff_Summary_byBrand[Diff_Summary_byBrand$product_id == "10194",])
+
+```
+
+
+                              
+```{r Cal_PED_Cont, message=FALSE, warning=FALSE, include=FALSE}
+                             
+                              
+#combine data by product_id and price but by brand as well
+#last step using Diff_Identifier we identify price changes in different peirod
+#Now we need to group those prices together for each product and sum it with total qty and total days of diff
+
+by_price2 <- dplyr::group_by(Diff_Summary_byBrand, product_id, price, brand_model)
+priceGrouped2 <- dplyr::summarise(by_price2,
+                                 price_id = min(price_id), #min(price_id) allows me to identify which price occurred first
+                                 Total_qty_demanded = sum(sum_qty),
+                                 Total_sales_days = sum(date_diff))
+
+
+#order by product_id and then by price_id to get the timeline of price occurred
+priceGrouped2 <- dplyr::arrange(priceGrouped2, product_id, brand_model, price_id)
+
+#change the brand_model to character
+priceGrouped2$brand_model <- as.character(priceGrouped2$brand_model)
+#change total sales days to numeric 
+priceGrouped2$Total_sales_days <- as.numeric(priceGrouped2$Total_sales_days)
+#change the dataframe to data table
+priceGrouped2 <- as.data.table(priceGrouped2)
+
+
+
+
+                  #-----------------------------NEED TO REFORMAT THE DATASET--------------------------------------#
+
+                  #what do we need NOW?
+                  #we need to make sure that for each product_id, for each kind of brand/model for that id, we have more than 1 price changed
+                  #otherwise we need to eliminate those brand/model that only occurred 1 time per product_id - #1 step
+                  #eliminate the brand/model per product_id that do NOT have price changed at all -#2 step
+
+                    Brand_PED_Analysis <- data.frame(
+                      product_id = character(),
+                      price = double(),
+                      brand_model = character(),
+                      price_id = character(),
+                      Total_qty_demanded = double(),
+                      Total_sales_days = double(),		                         
+                      stringsAsFactors=FALSE) 
+                    
+                    
+                    #grep each product_id
+                    
+                    for (id in unique(priceGrouped2$product_id)){
+                    	temp_DF <- priceGrouped2[priceGrouped2$product_id == id]
+                    
+                    	tempSubset <- select(as.data.frame(table(temp_DF$brand_model)), brand_model = Var1, frequency = Freq)
+                    	tempSubset <- dplyr::filter(tempSubset, frequency > 1)
+                    	# subset product_id if exsit in CountTimes_Filtered which has greater than 1 times of price change
+                        temp_DF <- subset(temp_DF[temp_DF$brand_model %in% tempSubset$brand_model,])
+                    
+                    
+                        #now we need to add this subset into a new dataframe (append it)
+                    	Brand_PED_Analysis <- rbind(Brand_PED_Analysis,temp_DF)
+                    }
+
+                    
+                    
+                    
+                    
+#--------------------------------------------READY FOR PED---------------------------------------------------#
+#arrange dataset
+Brand_PED_Analysis <- dplyr::arrange(Brand_PED_Analysis, product_id, brand_model, price_id)
+                    
+Brand_PED_Analysis <- as.data.table(Brand_PED_Analysis)         
+
+#now need to calculate PED for each kind of brand under each product_ID
+#in order to do so, we need to create a primary key for data.table to generate the arithmetic percentage change in some values
+#in this case, we combine product_id with brand_model
+Brand_PED_Analysis$Key <- paste(Brand_PED_Analysis$product_id, Brand_PED_Analysis$brand_model, sep = "")
+
+#mark product_id+brand_model as KEY
+setkey(Brand_PED_Analysis,Key)
+
+                    
+#calculate the # of orders per price period
+Brand_PED_Analysis$AvgDemand_PerDay <- Brand_PED_Analysis$Total_qty_demanded/as.numeric(Brand_PED_Analysis$Total_sales_days)
+
+
+#calculate percentage change in price and in average qty demanded by product_id for each brand_model per product_id
+Brand_PED_Analysis[,Change_price:=c(Delt(price, type='arithmetic')),by=Key]
+Brand_PED_Analysis[,Change_Avgqty:=c(Delt(AvgDemand_PerDay, type='arithmetic')),by=Key]
+
+
+#calculate price elasticity of demand per price change for each product_id
+Brand_PED_Analysis$PED <- Brand_PED_Analysis$Change_Avgqty/Brand_PED_Analysis$Change_price
+
+
+#clean the dataset
+Brand_PED_Analysis <- dplyr::select(Brand_PED_Analysis, product_id, brand_model, price, AvgDemand = AvgDemand_PerDay, TotalDemand = Total_qty_demanded, Total_Sales = Total_sales_days, everything(),PED,  -price_id,-Key)
+
+```
+
+- Below is the summary of PED analysis by product_id by brand/model. This is a sample dataset with product_id of "10194" with selected columns.
+- For many product_id just like "10194", which has multiple brand/model associated with, because of lack of records of price changes for those brand/models, it is difficult to conduct regression analysis on this kind of dataset.
+- However, it would be interesting to see how price changes and brand/model differences affect quantity demanded. More analysis can be done on this dataset. For example, create dummy variabels in brand/model per product_id to consider the effect on change in quantity demanded when price changed. 
+```{r PED_table_byBrand, echo=FALSE, message=FALSE, warning=FALSE}
+
+kable(subset(Brand_PED_Analysis, Brand_PED_Analysis$product_id == "10194", 
+select=c(product_id, brand_model, price,AvgDemand,Change_price,Change_Avgqty,PED)))
+
+
+
+```
+
+
+# Conclusion
+
+
+## Summary
+- In order to examine how change in price affects change in quantity demanded, PED analysis was conducted on orders dataset. The dataset includes product_id, price, brand/model, quantity ordered, date ordered across `r length(dataset$product_id)` records. 
+
+- To ensure PED calculation's accuracy and to increase regression models' significant level, some data preprocessing steps were taken: took out records of all post purchase purchases, of price listing days of 1, of brand_model that are either NULL or empty, of product_id with only 1 price changes.
+
+- PED calculation formula: % change in quantity demanded / % change in price.
+    + **Positive PED (PED > 0)** indicates that there is a positive relationship between change in price and change in quantity demanded, either 1) raising price caused quantity demanded increases or 2) when price drops, quantity demanded drops as well;       + **Negative PED (PED < 0)** indicates the nagative relationship between the two, either 1) raising price caused quantity demanded drops, or 2) when price drops, quantity demanded increases; 
+    + **PED = 0**, perfectly inelastic - price changes do not affect quantity demand
+- For absolute value of PED:
+    + **PED > 1**, elastic - 1% price changes have higher % changes in quantity demand
+    + **0 < PED < 1**, inelastic - 1% price changes have less than 1% changes in quantity demand
+    + **PED =1**, unit elasticity - % change in price is the same as % change in quantity demand
+
+- In this report, PED calculated in two different approaches. 
+    + Evaluate price changes on change in quantity demanded between each price changes (price changes' combinations)
+    + Evaluate price changes on change in quantity demanded between different brand/model per product_id
+
+- Regresion models were created for each product_id using percentage change in price as independent variable and percentage change in quantity demanded as dependent variable.
+    + To access important statistic summary of each regression model, a function is created to view the regression result for a particular product_id with certain percentage change in price. 
+
+
+## Benefits of Price Analysis
+
+- PED score can be used as a reference when we tend to make any price changes
+- Consumers’ behaviors have a huge impact on PED, to understand PED and use PED in our pricing strategy would greatly benefit the process of deliberation, and information search of consumer decision making process.
+- in the case of promotions or price decreases are planned, predictive models/regression model can predict the new demand scenarios, which would directly relate to inventory control to meet increased or decreased expected demand. Assuming regression model’s prediction power is good in some level (Adjusted R square or R square, significant level etc.)
+
+
+## Takeaways
+- Gather more data
+    + Test different base prices
+    + Experiment with promotions
+    + By adding more variables. For example, page views, conversion rate, or click throught rate. (This could help us futher partition the data by brand/model, by product type, etc.).
+    
+- Time effect. Some price changes are related to holidays or certain promotion, we could include those factors in our analysis (1 - promotion because of holidays or back to school etc., 0 - price changes because of cost, or competitors)
+
+- __Eyes on our competitors__ 
+    + __Identify our competitors, and monitor what they are doing for certain products. (e.g. Zagg, Mophiv etc.)__
+    + Promotions? Events? New inventions? **Price changes**?
+
+- __Monitor what we are doing__
+    + How do we set price for a product?
+    + If its based on competitors' listed price, how much do they sell? How much difference between our price and theirs? How long the price has been listed?
+    
+- __Eyes on cell phone market__
+    + How cell phone production would affect our sales? e.g. iPhone 7's introduction, Note 7 recall.
+    + How should we react to those events? More promotion/discount? Lower/raise the price?
+    + Relate to purchasing team, and inventory control. 
+    
+- Something more to think about:
+    + We are analyzing order data from CellularOutfitter. Are we planning to conduct pricing analysis on Mobovida? If yes, what should we do to prepare for it?
+    + Calculate RFM scores for each customer or each customer segment, use those variables with order data to create prediction model. (Consider customers' behavior) Aggregating data on customer level. 
+    + Add survey questions to set our pricing ranges from customers' response. (e.g. how much do you think its too high/too low?)
+    + PED is affected by 3 main factors: availability of substitues; time frame consumers have to adjust to the price change (not quite applicable to our business); how much of a household budget is allocated for this good. 
+    
+    
+    
+    
+    
+    
+    
+    

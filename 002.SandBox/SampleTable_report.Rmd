@@ -1,0 +1,81 @@
+---
+title: "PED Mis. Sample Tables - Report"
+header-includes: 
+   \usepackage{graphicx}
+   \usepackage{fancyhdr}
+   \pagestyle{fancy}
+   \setlength\headheight{28pt}
+   \fancyhead[L]{\includegraphics[width=0.5cm]{mobovidalogo.png}}
+   \fancyfoot[LE,RO]{CL}
+author: "Chloe Li"
+date: "September 6, 2016"
+output:
+  pdf_document: 
+    highlight: monochrome
+  html_document:
+    highlight: pygments
+    theme: cerulean
+classoption: landscape
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+setwd("/Users/chloeli/Documents/01. PriceElasticity_CL/004.Reports")
+
+TopSellers_PED <- read.csv("PED_TopSellers.csv")
+PED_byBrand <- read.csv("PED_byBrand.csv")
+PED_allproduct <- read.csv("PED_AllProduct.csv")
+
+pacman::p_load('ReporteRs',"knitr","xtable")
+
+TopSellers_PED$X <- NULL
+PED_byBrand$X <- NULL
+PED_allproduct$X <- NULL
+PED_byBrand$Change_price <- NULL
+PED_byBrand$Change_Avgqty <- NULL
+      
+```
+
+## Objectives
+- *How should we project the change in demand when we intend to change a certain product's price?*
+
+## Introduction
+- This report intends to show 3 sample PED tables
+- 1) PED calculation for all product
+- 2) PED calculation for top selling product with high average demand per day
+- 3) PED calcualtion for all product by brand/model
+
+\pagebreak
+
+## Table 1 - PED calculation for all product
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+kable(PED_allproduct[1:30,])
+
+
+```
+
+\pagebreak
+
+## Table 2 - PED calculation for top selling product with high average demand per day
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+kable(TopSellers_PED)
+
+```
+
+\pagebreak
+
+## Table 3 - PED calcualtion for all product by brand/model
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+kable(PED_byBrand[1:34,])
+
+```

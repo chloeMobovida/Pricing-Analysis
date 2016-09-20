@@ -1,0 +1,372 @@
+---
+title: "Product Price Elasticity Analysis"
+header-includes: 
+   \usepackage{graphicx}
+   \usepackage{fancyhdr}
+   \pagestyle{fancy}
+   \setlength\headheight{28pt}
+   \fancyhead[L]{\includegraphics[width=0.5cm]{mobovidalogo.png}}
+   \fancyfoot[LE,RO]{GPIM}
+author: "Chloe Li"
+date: "September 2, 2016"
+output:
+  pdf_document: 
+    highlight: monochrome
+  html_document:
+    highlight: pygments
+    theme: cerulean
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#this script is for generating report ONLY
+```
+
+
+```{r prep, message=FALSE, warning=FALSE, include=FALSE}
+#----------------------------------------------------LOAD------------------------------------------------------#
+      #clear environment
+      rm(list = ls())
+      #set working directory to where the data stores
+      setwd("/Users/chloeli/Documents/01. PriceElasticity_CL/001.Data")
+      
+      #install or/and reuqire neccessary packages
+      #if (!require("pacman")) install.packages("pacman") #this line of code just need to run once 
+      pacman::p_load("gridExtra","ggplot2", "dplyr","lubridate","reshape2","data.table","quantmod","lme4","lattice","plyr","broom",'ReporteRs',"knitr","xtable")
+      
+      
+      #---------------------------------------------------------------------------------------#
+      #make sure every files in the list are having the same structure first before importing 
+      #IF NOT:
+      #run ONLY ONCE:
+      ##source the function created to reformat the date in specific dataset
+      #source("/Users/chloeli/Documents/R_Reference_CL/ReformaDate_Function_CL.R")
+      #
+      #use the function
+      #ReformaDate("SFOI_160101_160430.csv")
+      #---------------------------------------------------------------------------------------#
+      
+      
+      #import data
+      
+      #getting a list of files in the directory
+      file_list <- list.files()
+      
+      #iterate through the list of files in the current working directory and put them together to form a dataframe 
+      for (file in file_list){
+             
+        # if the merged dataset doesn't exist, create it
+        if (!exists("dataset")){
+          dataset <- read.csv(file)
+        }
+         
+        # if the merged dataset does exist, append to it
+        if (exists("dataset")){
+          temp_dataset <-read.csv(file)
+          dataset<-rbind(dataset, temp_dataset)
+          rm(temp_dataset)
+        }
+       
+      }
+      
+#----------------------------------------------------LOAD------------------------------------------------------#
+
+
+
+#----------------------------------------------------PREP------------------------------------------------------#
+
+#select vairables that are needed for this analysis
+Master <- dplyr:: filter(dataset, post_purchase_item != 1 & price != 0.00) %>% 
+              #remove all post_purchase_item is 1, and price of 0.00
+                      select(product_id,name,qty_ordered,	
+                           price, date = created_at,brand_model)
+
+
+#change some variables to correct type
+Master$product_id <- as.character(Master$product_id)
+Master$name <- as.character(Master$name)
+#dealing with the time type 
+Master$date <- as.character(Master$date)
+Master$date <- as.Date(gsub( " .*$", "", Master$date))
+Master <- dplyr::arrange(Master, product_id, date)
+
+#----------------------------------------------------PREP------------------------------------------------------#
+
+```
+
+## Objectives
+- *How should we project the change in demand when we intend to change a certain product's price?*
+
+
+## Methodology
+- Methods in these analyses: 1) __*Own Price Elasticity of Demand*__; 2) __*Multiple Linear Regression Model*__
+- Accuracy measurement: 1) __Frequency of price changes per product__; 2) __Adjusted R square__ (assume 95% confidence level)
+
+
+## Data Summary
+- Available data: __`r file_list`__
+- Data's time range: __`r min(Master$date)`__ to __`r max(Master$date)`__
+- None post purchase items.
+- Method used: __*Own Price Elasticity of Demand*__; __*Multiple Linear Regression*__
+- Expected result:
+    + Price elasticity of demand equation per product --> __*PED score per product*__
+    + Linear regression model/equation per product --> __*Linear Regression on % change in demand based on % change in price*__
+    
+
+## Preliminary Analysis
+- Number of total orders __`r length(Master$product_id)`__
+- Number of uniuqe products in the dataset __`r length(unique(Master$product_id))`__
+- Number of unique brand/models __`r length(unique(Master$brand_model))`__
+- The below graph shows the distribution of price:
+
+```{r price_distribution_G1, echo=FALSE, message=FALSE, warning=FALSE}
+#graph histogram of price
+#y-count of price frequency
+#x-price range
+#more like a gamma distribution
+ggplot(Master, aes(x=price)) +
+    geom_histogram(colour = "black", fill = "sky blue",bins = 30) +
+    xlab("Price") +
+    ylab("Count") +
+    ggtitle("Histogram of Price") 
+
+  
+```
+
+
+## Further Explaination
+- The below graph shows the distribution of frequency of all products' price changes. 
+
+```{r DF_priceChange_Freq, message=FALSE, warning=FALSE, include=FALSE}
+#create a dataset to show each price change per products
+
+#group the data by each product and its each price to show each product with different price if changed had been made
+by_ProductID <- dplyr::group_by(Master, product_id, price) 
+
+SumData <- dplyr::summarise(by_ProductID, 
+                    #calculate the total quantity sold to customers at each price for each product
+                                 #Start_PriceChange_Date = min(date),
+                                Total_Orders = sum(qty_ordered)
+                                ) 
+                                
+```
+
+
+```{r price_changed_G1, echo=FALSE, message=FALSE, warning=FALSE}
+#create a dataset to 
+
+#use table() to calculate the frequency of price changes per product_id
+#this step is to examine the feasibility of the analysis
+CountTimes <- dplyr::select(as.data.frame(table(SumData$product_id)), product_id = Var1, frequency = Freq)
+
+# ####
+#use histogram to show the feasibility
+#shows how many products that have # of prices changed
+ggplot(CountTimes, aes(x=frequency)) +
+    geom_histogram(colour = "black", fill = "pink", bins = 30) +
+    xlab("Frequency") +
+    ylab("Count") +
+    ggtitle("Histogram of Frequency in Price Change")
+
+# ####
+
+#filter the dataset based on frequency in price change
+#in this case, the cut off point is 2
+CountTimes_Filtered <- dplyr::filter(CountTimes, CountTimes$frequency > 2)
+
+
+```
+
+
+```{r PriceChangedData, message=FALSE, warning=FALSE, include=FALSE}
+#get a dataset with all data in which products have changed 2 or more times in its price 
+
+# subset product_id if exsit in CountTimes_Filtered which has greater than 1 times of price change
+PriceChangedData <- subset(Master[Master$product_id %in% CountTimes_Filtered$product_id,])
+#arrange dataset so all same product_id with multiple dates
+PriceChangedData <- dplyr::arrange(PriceChangedData, product_id, date)
+```
+
+
+## Brand/Model Analysis - Exploratory
+- The below graph shows number of orders per brand/model:
+```{r Brand_Analysis_Ready, message=FALSE, warning=FALSE, include=FALSE}
+
+#Count frequency of brand_model for product_id with multiple prices
+CountBrand <- as.data.frame(table(PriceChangedData$brand_model))
+CountBrand <- dplyr::select(CountBrand, brand_model = Var1, Num_Orders = Freq)
+
+#filter the brand_model with larger frequency/number of orders and remove some NULL/NA
+filtered_brand <- filter(CountBrand, Num_Orders > 100 & brand_model != "\\t" & brand_model != "" & brand_model != "NULL") %>%
+                        arrange(desc(Num_Orders))
+#go back to original dataset and subset the brand/model that we need
+brand_Ready <- subset(PriceChangedData[PriceChangedData$brand_model %in% filtered_brand$brand_model,])
+
+
+by_BrandID <- dplyr::group_by(brand_Ready, brand_model) 
+Brand_ID <- dplyr::summarise(by_BrandID, Num_Unique_ID = length(unique(product_id))) %>%
+                      arrange(desc(Num_Unique_ID)) %>%
+                      filter(Num_Unique_ID > 5)
+Brand_ID$Num_Unique_ID <- as.numeric(Brand_ID$Num_Unique_ID)
+``` 
+
+
+```{r Brand_Analysis_G1, echo=FALSE, message=FALSE, warning=FALSE}
+
+#brand/model analysis is based on product_id whose price had changed more than 2 times
+#-----------------------------------------------------SHOW-------------------------------------------------------------------#
+#this is histogram to show number of total orders per brand/model (sorted)
+          #####################################################################################
+          #set up x & y axis label's theme
+          #bold <- element_text(face = "bold", color = "black")
+          #add more by adding face = "bold.italics" etc.
+          #More: http://rstudio-pubs-static.s3.amazonaws.com/3364_d1a578f521174152b46b19d0c83cbe7e.html
+                                            
+          Brand <- ggplot(brand_Ready,aes(x=reorder(brand_model,brand_model,function(x)-length(x))))
+          Brand + 
+          geom_bar(fill = "orange") + 
+          theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+          ggtitle("Histogram of Brand/Model") +
+          xlab("Brand") +
+          ylab("Number of Orders") #+
+          #theme(axis.text = bold)
+
+
+          #####################################################################################
+
+                    #show table for top 20 brands/models with number of total orders per brands/models
+                    kable(filtered_brand[1:20,])
+
+```
+
+- The below graph shows the number of unique product_id associated with each brand/model
+```{r Brand_Analysis_G2, echo=FALSE, message=FALSE, warning=FALSE}
+                    
+          #####################################################################################              
+                    #show histogram of number of unique product_id per brand/model
+                    #this is  histogram of number of unique_ID associated with each brand/model 
+                    #(exclude the ID with only 1 price changed)                   
+                    
+                   ggplot(Brand_ID,aes(x=reorder(brand_model,-Num_Unique_ID),y=Num_Unique_ID)) + 
+                          geom_bar(fill = "#0072B2", stat='identity') + 
+                          labs(y='Number of Unique Product_ID',x='Brand/Model') + #coord_flip() 
+                          theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+          ##################################################################################### 
+                    
+                    #Show table for top 20 brands/models with number of unique product_id associated with 
+                    kable(Brand_ID[1:20,])
+                    
+                    
+#-----------------------------------------------------SHOW END---------------------------------------------------------------#
+                    
+```
+
+
+```{r Cal_PED, message=FALSE, warning=FALSE, include=FALSE}
+
+#this section is to calculate the PED per product'price change
+
+
+                  ##########  ########## ###########
+                  #        #  #          #          #
+                  #        #  #          #          #
+                  ##########  #########  #          #
+                  #           #          #          #
+                  #           #          #          #
+                  #           ########## ###########
+
+
+# ####
+#source the R function code for Diff_Identifier() which returns a new data frame
+source("/Users/chloeli/Documents/R_Functions_CL/Diff_Identifier_Name_Fun.R")
+
+Diff_Summary <- Diff_Identifier_Name(PriceChangedData) #added name
+
+#make unique name for each product_id (only care about specific product but not model)
+for (id in unique(Diff_Summary$product_id)){
+	names <- Diff_Summary[which(Diff_Summary$product_id == id)]$name
+	Diff_Summary[which(Diff_Summary$product_id == id)]$name <- names[1]
+
+}
+
+
+#-------------------------------------------------------------------------------------------------------------#
+#combine data by product_id and price
+#last step using Diff_Identifier we identify price changes in different peirod
+#Now we need to group those prices together for each product and sum it with total qty and total days of diff
+
+by_price <- dplyr::group_by(Diff_Summary, product_id, price)
+priceGrouped <- dplyr::summarise(by_price,
+                                 name = unique(name),
+                                 price_id = min(price_id), #min(price_id) allows me to identify which price occurred first
+                                 Total_qty_demanded = sum(sum_qty),
+                                 Total_sales_days = sum(date_diff))
+
+
+#order by product_id and then by price_id
+priceGrouped <- dplyr::arrange(priceGrouped, product_id, price_id)
+#filter the dataset: exclude data points whose Total_sales_days are 1
+priceGrouped <- dplyr::filter(priceGrouped, Total_sales_days != 1 & Total_qty_demanded > 5) #might result in more 1 price changed entries..exclude those if possible
+
+#--------------------------------------------EXCLUDE 1 PRICE CHANGED ITEM--------------------------------------#
+#use table() to calculate the frequency of price changes per product_id
+#this step is to examine the feasibility of the analysis
+CountTimes_2 <- dplyr::select(as.data.frame(table(priceGrouped$product_id)), product_id = Var1, frequency = Freq)
+
+#filter the dataset based on frequency in price change
+#in this case, the cut off point is 2
+CountTimes_2Filtered <- dplyr::filter(CountTimes_2, CountTimes_2$frequency > 2)
+
+
+
+# subset product_id if exsit in CountTimes_Filtered which has greater than 1 times of price change
+priceGrouped <- subset(priceGrouped[priceGrouped$product_id %in% CountTimes_2Filtered$product_id,])
+#arrange dataset so all same product_id with multiple dates
+priceGrouped <- dplyr::arrange(priceGrouped, product_id)
+
+
+
+
+#transform the dataset into data table for further calcualtion
+priceGrouped <- as.data.table(priceGrouped)
+
+priceGrouped[, price_id_New := cumsum(c(0,diff(price) != 0)), by = product_id] #add new marker to price_id so I know which price occurred first
+
+#reorganize the dataset
+priceGrouped <- dplyr::select(priceGrouped, product_id, price_id_New, everything()) #rearrange the dataset variable order
+priceGrouped <- dplyr::select(priceGrouped, -price_id)
+
+
+
+#--------------------------------------------READY FOR PED---------------------------------------------------#
+
+#calculate the # of orders per price period
+priceGrouped$AvgDemand_PerDay <- priceGrouped$Total_qty_demanded/as.numeric(priceGrouped$Total_sales_days)
+
+
+#sort dataframe by product_id and mark it as KEY
+setkey(priceGrouped,product_id)
+
+#calculate percentage change in price and in average qty demanded by product_id
+priceGrouped[,Change_price:=c(Delt(price, type='arithmetic')),by=product_id]
+priceGrouped[,Change_Avgqty:=c(Delt(AvgDemand_PerDay, type='arithmetic')),by=product_id]
+
+
+#calculate price elasticity of demand per price change for each product_id
+priceGrouped$PED <- priceGrouped$Change_Avgqty/priceGrouped$Change_price
+```
+
+
+
+```{r PED_Ready, message=FALSE, warning=FALSE, include=FALSE}
+
+#----------------------------------------------PED READY----------------------------------------------------#
+
+#transform back to data frame type 
+priceGrouped <- as.data.frame(priceGrouped) 
+
+write.csv(priceGrouped,"PEDTest_Name_ver02.csv")
+
+```
+
