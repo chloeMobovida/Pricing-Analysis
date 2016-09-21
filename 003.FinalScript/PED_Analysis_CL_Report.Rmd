@@ -3,13 +3,14 @@ title: "Product Price Elasticity Analysis Report"
 author: "Chloe Li"
 date: "September 12, 2016"
 output:
+  word_document: default
   pdf_document:
     highlight: monochrome
   html_document:
     highlight: pygments
     theme: united
 header-includes: \usepackage{graphicx} \usepackage{fancyhdr} \pagestyle{fancy} \setlength\headheight{28pt}
-  \fancyhead[L]{\includegraphics[width=0.5cm]{mobovidalogo.png}} \fancyfoot[LE,RO]{GPIM}
+  \fancyhead[L]{\includegraphics[width=0.5cm]{mobovidalogo.png}} \fancyfoot[LE,RO]{CL}
 ---
 
 ```{r setup, include=FALSE}
