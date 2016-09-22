@@ -1,0 +1,80 @@
+---
+title: "Sku Selection"
+author: "Chloe Li"
+date: "September 22, 2016"
+output:
+  pdf_document:
+    highlight: monochrome
+  html_document:
+    highlight: pygments
+    theme: united
+  word_document: default
+header-includes: \usepackage{graphicx} \usepackage{fancyhdr} \pagestyle{fancy} \setlength\headheight{28pt}
+  \fancyhead[L]{\includegraphics[width=0.5cm]{mobovidalogo.png}} \fancyfoot[LE,RO]{CL}
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## Introduction
+- This document is a recommendation on how to select skus for price changes.
+- As of Sept 22 2016, we do not have enough data to make a good decision on which sku to choose based on our PED calculation and regression analysis.
+- The recommendations are based on data we got from previous analysis and price testing on Group A. 
+- Moreover, Gerard has provided a list of categories associated with its Sku (first 3 letters), which we use it for further data partitioning.
+
+## Data
+- The below table shows the data we use for recommendations. 
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+#partition data by categories
+
+setwd("/Users/chloeli/Documents/01. PriceElasticity_CL/004.Reports")
+
+pacman::p_load("ggplot2", "dplyr","data.table","plyr","broom","knitr")
+
+GroupA_Summary <- read.csv("GroupA_EstQtyDemand9192016.csv")
+
+
+kable(GroupA_Summary[1:5,])
+```
+
+
+## Selection Criteria
+- PED of greater than -1 considered having a good impact on our revenue since it means that with percentage of increase in price, percentage change in demand did not change that much so we could still have good revenue. 
+- The below scatter plot shows the number of sku that falls under "Good" (PED > -1) by category.
+- Although it is debatable what categories we should choose, here I recommend the top 5-8 categories since most of skus under that category have good PED, its likely that our price changes would provide better results than the rest.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+
+#if PED > -1, assign it to good if not then bad (do 10% first)
+
+GroupA_Summary$PED_eval <- ifelse(GroupA_Summary$X10._PED > -1, "1", "0")
+
+#group by category
+
+byCategory <- dplyr::group_by(GroupA_Summary, Category)
+Summary_Good <- dplyr::summarise(byCategory, 
+                                 Good = length(PED_eval[PED_eval == "1"]),
+                                 Bad = length(PED_eval[PED_eval == "0"]))
+
+
+library(ggplot2)
+
+ggplot(Summary_Good, aes(x=reorder(Category,-Good), y=Good, size=Good, colours = Good)) + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
+  geom_count(colour="orange") +
+  scale_colour_brewer(palette = "Set1") +
+  theme(panel.background = element_rect(fill="light grey"))
+
+
+
+
+```
+
+- R square: measure how much percentage of variance is explained by the model. The higher the better. Although the specific cutoff point is controversial, an R square of 40% and above considered as good models. (Note, many models are over-fitted).
+- P.Value: measure how significant the model is. The lower the better according to the default of 5%. Although the specific cutoff point is controversial, a p value of a model of lower than 0.1 considered as a significant model.
+
