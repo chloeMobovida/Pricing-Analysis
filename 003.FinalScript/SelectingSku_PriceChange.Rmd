@@ -11,7 +11,7 @@ output:
   word_document: default
 header-includes: \usepackage{graphicx} \usepackage{fancyhdr} \pagestyle{fancy} \setlength\headheight{28pt}
   \fancyhead[L]{\includegraphics[width=0.5cm]{mobovidalogo.png}} \fancyfoot[LE,RO]{CL}
-
+classoption: landscape
 ---
 
 ```{r setup, include=FALSE}
@@ -59,7 +59,10 @@ GroupA_Summary$PED_eval <- ifelse(GroupA_Summary$X10._PED > -1, "1", "0")
 byCategory <- dplyr::group_by(GroupA_Summary, Category)
 Summary_Good <- dplyr::summarise(byCategory, 
                                  Good = length(PED_eval[PED_eval == "1"]),
-                                 Bad = length(PED_eval[PED_eval == "0"]))
+                                 Bad = length(PED_eval[PED_eval == "0"])) %>% arrange(-Good)
+
+
+
 
 
 library(ggplot2)
@@ -77,4 +80,30 @@ ggplot(Summary_Good, aes(x=reorder(Category,-Good), y=Good, size=Good, colours =
 
 - R square: measure how much percentage of variance is explained by the model. The higher the better. Although the specific cutoff point is controversial, an R square of 40% and above considered as good models. (Note, many models are over-fitted).
 - P.Value: measure how significant the model is. The lower the better according to the default of 5%. Although the specific cutoff point is controversial, a p value of a model of lower than 0.1 considered as a significant model.
+
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+#filter the top 5 categories for now
+
+#grep top 5 categories name
+Top5Cat <- Summary_Good$Category[1:5]
+
+GroupA_Summary <- subset(GroupA_Summary, GroupA_Summary$Category %in% Top5Cat)
+
+#filter R square of greater than 40% or 0.4
+GroupA_Summary <- dplyr::filter(GroupA_Summary, r.squared > 0.4)
+
+#filter p value < 0.1
+GroupA_Summary <- dplyr::filter(GroupA_Summary, p.value < 0.1)
+
+```
+
+\pagebreak
+
+## Further discussion
+- Due to lack of data, we may need to ignore PED that is greater than 50 or even greater than 20.
+- We may need to analyze what categories sell the most from sales flat order dataset, and search for medium sales categories. 
+- Also, we may want to avoid selecting categories/skus that are on Facebook (1. usually Facebook sku have certain price range, right? 2. if our price changes on some FB skus and some are not, the impacts will be hard to evaluate because maybe no matter what, FB skus have large impact on change in demand.). Therefore, either we could choose all FB skus, or none FB skus. (e.g. wallet case might be always on FB). However, if a certain product is always on FB, it might be ok to analyze those as well.
+- If we need to add more parameters into the model, we should look at the Adjusted R Square instead of R Square.
+- Few other recommendations will be added soon.
 
