@@ -71,7 +71,10 @@ ggplot(Summary_Good, aes(x=reorder(Category,-Good), y=Good, size=Good, colours =
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) + 
   geom_count(colour="orange") +
   scale_colour_brewer(palette = "Set1") +
-  theme(panel.background = element_rect(fill="light grey"))
+  theme(panel.background = element_rect(fill="light grey")) +
+  xlab("Category") + 
+  ylab("Count of Good PED") +
+  ggtitle("Count of Good PED per Category")
 
 
 
@@ -102,6 +105,8 @@ GroupA_Summary <- dplyr::filter(GroupA_Summary, p.value < 0.1)
 
 ## Further discussion
 - Due to lack of data, we may need to ignore PED that is greater than 50 or even greater than 20.
+- In this case, by looking at R square, P value, PED, we have __`r length(unique(GroupA_Summary$sku))`__ skus from Group A.
+
 - We may need to analyze what categories sell the most from sales flat order dataset, and search for medium sales categories. 
 - Also, we may want to avoid selecting categories/skus that are on Facebook (1. usually Facebook sku have certain price range, right? 2. if our price changes on some FB skus and some are not, the impacts will be hard to evaluate because maybe no matter what, FB skus have large impact on change in demand.). Therefore, either we could choose all FB skus, or none FB skus. (e.g. wallet case might be always on FB). However, if a certain product is always on FB, it might be ok to analyze those as well.
 - If we need to add more parameters into the model, we should look at the Adjusted R Square instead of R Square.

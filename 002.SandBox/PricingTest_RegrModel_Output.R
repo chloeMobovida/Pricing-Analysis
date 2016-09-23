@@ -54,7 +54,7 @@ dataset <- do.call("rbind",lapply(file_list,
                                                                           "sku","price", "qty_ordered", "created_at", 
                                                                           "brand_model", "post_purchase_item")]}))
 
-setwd("/Users/chloeli/Documents/01. PriceElasticity_CL/007.PricingTest")
+setwd("/Users/chloeli/Documents/01. PriceElasticity_CL/006.PricingTest")
 #grab dataset that David sent to me. The pricing changed only on Group A sku.
 #Note, some of sku had 10% price increase but some of them are not.
 
@@ -120,7 +120,7 @@ GroupA_DT_Filtered <- dplyr::select(GroupA_DT_Filtered, product_id, sku, price, 
 
 
 #------------------------------------------------DATASET READY--------------------------------------------------#
-source("/Users/chloeli/Documents/01. PriceElasticity_CL/008.Pricing_Regression_Scripts/Diff_Identifier_Fun_bySku.R")
+source("/Users/chloeli/Documents/01. PriceElasticity_CL/007.Functions_CL/Diff_Identifier_Fun_bySku.R")
 
 Diff_summary_bySku <- Diff_Identifier_Sku(GroupA_DT_Filtered)
 
@@ -255,6 +255,24 @@ DT_CombP_PED$PED <- DT_CombP_PED$Percent_Change_Avgqty/DT_CombP_PED$Percent_Chan
 DT_CombP_PED$Revenue <- DT_CombP_PED$price * DT_CombP_PED$Total_qty_demanded
 #rearrange the column names
 DT_CombP_PED <- dplyr::select(DT_CombP_PED, sku, price_id_New, price, Total_qty_demanded, Revenue, everything())   
+
+
+setwd("/Users/chloeli/Documents/01. PriceElasticity_CL/005.RelevantDocuments")
+
+#get document to greb all sku category data
+Sku_Category <- read.csv("Sku_Category.csv")
+
+#grep the first three letters of sku
+DT_CombP_PED$SubSku <- substr(DT_CombP_PED$sku, 0, 3)
+#reset the name of columns for later join
+DT_CombP_PED <- dplyr::select(DT_CombP_PED, sku = SubSku, original_sku = sku, everything())
+#use join function from plyr to do VLOOKUP function in R
+#match with categories
+DT_CombP_PED <- join(DT_CombP_PED, Sku_Category, by = "sku")
+
+
+
+
 
 
 
