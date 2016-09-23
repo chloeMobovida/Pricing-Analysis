@@ -44,8 +44,8 @@ kable(GroupA_Summary[1:5,])
 
 ## Selection Criteria
 - PED of greater than -1 considered having a good impact on our revenue since it means that with percentage of increase in price, percentage change in demand did not change that much so we could still have good revenue. 
-- The below scatter plot shows the number of sku that falls under "Good" (PED > -1) by category.
-- Although it is debatable what categories we should choose, here I recommend the top 5-8 categories since most of skus under that category have good PED, its likely that our price changes would provide better results than the rest.
+- The below scatter plot shows the number of sku that falls under "Good" **(PED > -1)** by category.
+- Although it is debatable what categories we should choose, here I recommend the **top 5-8 categories** since most of skus under that category have good PED, its likely that our price changes would provide better results than the rest.
 
 ```{r, echo=FALSE, message=FALSE, warning=FALSE}
 
@@ -81,8 +81,8 @@ ggplot(Summary_Good, aes(x=reorder(Category,-Good), y=Good, size=Good, colours =
 
 ```
 
-- R square: measure how much percentage of variance is explained by the model. The higher the better. Although the specific cutoff point is controversial, an R square of 40% and above considered as good models. (Note, many models are over-fitted).
-- P.Value: measure how significant the model is. The lower the better according to the default of 5%. Although the specific cutoff point is controversial, a p value of a model of lower than 0.1 considered as a significant model.
+- R square: measure how much percentage of variance is explained by the model. The higher the better. Although the specific cutoff point is controversial, an R square of **40%** and above considered as good models. (Note, many models are over-fitted).
+- P.Value: measure how significant the model is. The lower the better according to the default of 5%. Although the specific cutoff point is controversial, a p value of a model of lower than **0.1** considered as a significant model.
 
 
 ```{r, message=FALSE, warning=FALSE, include=FALSE}
@@ -99,6 +99,8 @@ GroupA_Summary <- dplyr::filter(GroupA_Summary, r.squared > 0.4)
 #filter p value < 0.1
 GroupA_Summary <- dplyr::filter(GroupA_Summary, p.value < 0.1)
 
+#write.csv(GroupA_Summary, "Selected_Sku.csv")
+
 ```
 
 \pagebreak
@@ -111,4 +113,7 @@ GroupA_Summary <- dplyr::filter(GroupA_Summary, p.value < 0.1)
 - Also, we may want to avoid selecting categories/skus that are on Facebook (1. usually Facebook sku have certain price range, right? 2. if our price changes on some FB skus and some are not, the impacts will be hard to evaluate because maybe no matter what, FB skus have large impact on change in demand.). Therefore, either we could choose all FB skus, or none FB skus. (e.g. wallet case might be always on FB). However, if a certain product is always on FB, it might be ok to analyze those as well.
 - If we need to add more parameters into the model, we should look at the Adjusted R Square instead of R Square.
 - Few other recommendations will be added soon.
+- **__NOTE:__ we have few data points for each sku to build a decent model at this point, therefore, by solely looking at R square and P value of each Sku's model might not help us that much to make a good prediction. Moreover, since we did not have a systematic way of changing price before, those price changes and changes in demand have lots of variantions that may affect our models. **
+    + **That being said, the model we have now is not good enough for us to trust.**
+    + **However, I do believe it is a good starting point for us to start the pricing test and start collecting data based on these models as a reference.**
 
